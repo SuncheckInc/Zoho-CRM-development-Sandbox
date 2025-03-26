@@ -1,0 +1,151 @@
+/////// When a deal contract is opened in deal the in Zoho Catalyst Admin Deal contract Open table new row has been added /////////////////
+
+void automation.Admin_Row_Added_In_Zoho_Catalyst_Admin_Deal_Contract_Opened(Int deal_id)
+{
+    // Fetch deal details from Zoho CRM using deal ID
+    deals_details = zoho.crm.getRecordById("Deals",deal_id);
+    lead_source = ifnull(deals_details.getJSON("Lead_Source"),"");
+    stage = ifnull(deals_details.getJSON("Stage"),"");
+    
+    // Search for vendor webhook records for "Contract Opened" event
+    search_vendor_webhook = zoho.crm.searchRecords("Vendor_Webhook","(Event_Name:equals:Contract Opened)");
+    info search_vendor_webhook;
+    
+    if(search_vendor_webhook.size() > 0)
+    {
+        // Fetch vendor webhook details
+        record_id = search_vendor_webhook.getJSON("id");
+        vendor_webhook = zoho.crm.getRecordById("Vendor_Webhook",record_id);
+        translation = vendor_webhook.getJSON("Translation");
+        vendor_service_url = vendor_webhook.getJSON("Vendor_Service_URL");
+        username = vendor_webhook.getJSON("Username");
+        api_key = vendor_webhook.getJSON("API_Key");
+        password = vendor_webhook.getJSON("Password");
+        type_of_authentication = vendor_webhook.getJSON("Type_of_Authentication");
+        status = vendor_webhook.getJSON("Status");
+        
+        // Prepare mapped data for request
+        mapped_data = Map();
+        mapped_data.put("VendorServiceURL",vendor_service_url);
+        mapped_data.put("DealId",deal_id);
+        mapped_data.put("Username",username);
+        mapped_data.put("Password",password);
+        
+        // Fetch API key if not already available
+        if(api_key != null || api_key != "")
+        {
+            mapped_data.put("APIKey",api_key);
+        }
+        else
+        {
+            header_map = Map();
+            header_map.put("username",username);
+            header_map.put("password",password);
+            
+            fetch_api_key = invokeurl
+            [
+                url :vendor_service_url
+                type :POST
+                headers:header_map
+            ];
+            info fetch_api_key;
+            
+            api_key_value = fetch_api_key.getJSON("api-key");
+            info api_key_value;
+            
+            res = invokeurl
+            [
+                url :vendor_service_url + api_key_value
+                type :GET
+            ];
+            info res;
+            
+            mapped_data.put("APIKey",api_key_value);
+        }
+        
+        // Additional mapped data fields
+        mapped_data.put("TypeofAuthentication",type_of_authentication);
+        mapped_data.put("Status",status);
+        mapped_data.put("CustomerEmail",ifnull(deals_details.getJSON("Customer_Email"),""));
+        mapped_data.put("CustomerFirstName",ifnull(deals_details.getJSON("Customer_First_Name"),""));
+        mapped_data.put("CustomerLastName",ifnull(deals_details.getJSON("Customer_Last_Name"),""));
+        
+        // Handle phone number
+        phone_number = ifnull(deals_details.get("Phone_Number"),"");
+        if(phone_number != "" && phone_number.isNumber())
+        {
+            mapped_data.put("PhoneNumber",phone_number.toLong());
+        }
+        
+        // Handle customer agreement timestamp
+        customer_open_agreement_timestamp = deals_details.getJSON("Customer_Open_Agreement_Timestamp");
+        info customer_open_agreement_timestamp;
+        
+        if(customer_open_agreement_timestamp != null)
+        {
+            formattedTimestamp = customer_open_agreement_timestamp.toString("yyyy-MM-dd HH:mm:ss");
+            info "Formatted Timestamp: " + formattedTimestamp;
+            mapped_data.put("CustomerOpenAgreementTimestamp",formattedTimestamp);
+        }
+        
+        mapped_data.put("Translation",translation);
+        
+        // Project address details
+        mapped_data.put("StreetProject",ifnull(deals_details.getJSON("Street_Project"),""));
+        mapped_data.put("CityProject",ifnull(deals_details.getJSON("City_Project"),""));
+        mapped_data.put("StateProject",ifnull(deals_details.getJSON("State_Project"),""));
+        mapped_data.put("ZipCodeProject",ifnull(deals_details.getJSON("Zip_Code_Project"),""));
+        
+        // Handle lead details
+        lead_name = ifnull(deals_details.getJSON("Lead_Name"),"");
+        info lead_name;
+        
+        if(lead_name != "")
+        {
+            lead_id = ifnull(lead_name.getJSON("id"),"");
+            mapped_data.put("LeadName",lead_id.toString());
+        }
+        
+        mapped_data.put("LeadStatus","Contract Opened");
+        mapped_data.put("Suncheckstage","Contract Opened");
+        
+        // Prepare data for API request
+        data_list = List();
+        data_list.add(mapped_data);
+        rec = {data_list};
+        
+        // Fetch access token for authentication
+        access_token_map = Map();
+        access_token_map.put("refresh_token","1000.24a97563d30319d7aac73b26e10b6c37.c8da39c51abaf4b0695433e71b997dac");
+        access_token_map.put("client_id","1000.UBZEK4NTC5JNXLET4ZW1SR4GKWE89Y");
+        access_token_map.put("client_secret","c19000f5be92039df6599ac98fc53cf4592c0b20e2");
+        access_token_map.put("redirect_uri","https://www.google.com/");
+        access_token_map.put("grant_type","refresh_token");
+        
+        access_token_response = invokeurl
+        [
+            url :"https://accounts.zoho.com/oauth/v2/token"
+            type :POST
+            parameters:access_token_map
+        ];
+        
+        access_token = access_token_response.get("access_token");
+        
+        // Send data to Catalyst API if access token is available
+        if(access_token != null)
+        {
+            headers = Map();
+            headers.put("Authorization","Zoho-oauthtoken " + access_token);
+            headers.put("Content-Type","application/json");
+            
+            response = invokeurl
+            [
+                url :"https://api.catalyst.zoho.com/baas/v1/project/30100000000008022/table/30100000000036001/row"
+                type :POST
+                parameters:rec.toString()
+                headers:headers
+            ];
+            info response;
+        }
+    }
+}
