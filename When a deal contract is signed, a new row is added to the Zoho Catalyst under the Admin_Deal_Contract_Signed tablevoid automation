@@ -1,0 +1,155 @@
+///////////////////// When a deal contract is signed, a new row is added to the Zoho Catalyst under the
+Admin_Deal_Contract_Signed tablevoid automation./////////////////////////////////////////////
+
+Admin_Row_Added_In_Zoho_Catalyst_Admin_Deal_For_Contract_Signed(Int deal_id)
+{
+    // Fetch deal details from Zoho CRM
+    deals_details = zoho.crm.getRecordById("Deals",deal_id);
+    lead_source = ifnull(deals_details.getJSON("Lead_Source"),"");
+    stage = ifnull(deals_details.getJSON("Stage"),"");
+    
+    // Search for vendor webhook configuration for "Contract Signed" event
+    search_vendor_webhook = zoho.crm.searchRecords("Vendor_Webhook","(Event_Name:equals:Contract Signed)");
+    
+    if(search_vendor_webhook.size() > 0)
+    {
+        record_id = search_vendor_webhook.getJSON("id");
+        vendor_webhook = zoho.crm.getRecordById("Vendor_Webhook",record_id);
+        
+        // Extract webhook configuration details
+        translation = vendor_webhook.getJSON("Translation");
+        vendor_service_url = ifnull(vendor_webhook.getJSON("Vendor_Service_URL"),"");
+        username = ifnull(vendor_webhook.getJSON("Username"),"");
+        api_key = vendor_webhook.getJSON("API_Key");
+        password = ifnull(vendor_webhook.getJSON("Password"),"");
+        type_of_authentication = vendor_webhook.getJSON("Type_of_Authentication");
+        status = vendor_webhook.getJSON("Status");
+        info status;
+        
+        // Create a map for mapped data to be sent
+        mapped_data = Map();
+        mapped_data.put("VendorServiceURL",vendor_service_url);
+        mapped_data.put("DealId",deal_id);
+        mapped_data.put("Username",username);
+        mapped_data.put("Password",password);
+        
+        // Check API key and handle authentication if necessary
+        if(api_key != null || api_key != "")
+        {
+            mapped_data.put("APIKey",api_key);
+        }
+        else if((api_key == null || api_key == "") && (username != null || username != "") && (password != null || password != "") && (vendor_service_url != null || vendor_service_url != ""))
+        {
+            // Prepare headers for authentication
+            header_map = Map();
+            header_map.put("username",username);
+            header_map.put("password",password);
+            
+            // Invoke URL to fetch API key
+            fetch_api_key = invokeurl
+            [
+                url :vendor_service_url
+                type :POST
+                headers:header_map
+            ];
+            info fetch_api_key;
+            
+            api_key_value = fetch_api_key.getJSON("api-key");
+            info api_key_value;
+            
+            // Invoke service with API key
+            res = invokeurl
+            [
+                url :vendor_service_url + api_key_value
+                type :GET
+            ];
+            info res;
+            
+            mapped_data.put("APIKey",api_key_value);
+        }
+        
+        mapped_data.put("TypeofAuthentication",type_of_authentication);
+        mapped_data.put("Status",status);
+        
+        // Extract customer details
+        mapped_data.put("CustomerEmail",ifnull(deals_details.getJSON("Customer_Email"),""));
+        mapped_data.put("CustomerFirstName",ifnull(deals_details.getJSON("Customer_First_Name"),""));
+        mapped_data.put("CustomerLastName",ifnull(deals_details.getJSON("Customer_Last_Name"),""));
+        
+        // Handle phone number conversion
+        phone_number = ifnull(deals_details.get("Phone_Number"),"");
+        if(phone_number != "" && phone_number.isNumber())
+        {
+            mapped_data.put("PhoneNumber",phone_number.toLong());
+        }
+        
+        // Convert timestamp format
+        customer_complete_agreement_timestamp = deals_details.getJSON("Customer_Complete_Agreement_Timestamp");
+        if(customer_complete_agreement_timestamp != null)
+        {
+            formattedTimestamp = customer_complete_agreement_timestamp.toString("yyyy-MM-dd HH:mm:ss");
+            mapped_data.put("CustomerCompleteAgreementTimestamp",formattedTimestamp);
+        }
+        
+        mapped_data.put("Translation",translation);
+        
+        // Extract project address details
+        mapped_data.put("StreetProject",ifnull(deals_details.getJSON("Street_Project"),""));
+        mapped_data.put("CityProject",ifnull(deals_details.getJSON("City_Project"),""));
+        mapped_data.put("StateProject",ifnull(deals_details.getJSON("State_Project"),""));
+        mapped_data.put("ZipCodeProject",ifnull(deals_details.getJSON("Zip_Code_Project"),""));
+        
+        // Extract lead name and ID
+        lead_name = ifnull(deals_details.getJSON("Lead_Name"),"");
+        info lead_name;
+        if(lead_name != "")
+        {
+            lead_id = ifnull(lead_name.getJSON("id"),"");
+            mapped_data.put("LeadName",lead_id.toString());
+        }
+        mapped_data.put("LeadName",lead_id);
+        
+        // Set deal stage details
+        mapped_data.put("LeadStatus","Contract Signed");
+        mapped_data.put("Suncheckstage","Contract Signed");
+        mapped_data.put("Contractlink",ifnull(deals_details.getJSON("Zoho_Sign_Workdrive_URL"),""));
+        
+        // Prepare data for API request
+        data_list = List();
+        data_list.add(mapped_data);
+        rec = {data_list};
+        
+        // OAuth 2.0 - Get Access Token
+        access_token_map = Map();
+        access_token_map.put("refresh_token","1000.24a97563d30319d7aac73b26e10b6c37.c8da39c51abaf4b0695433e71b997dac");
+        access_token_map.put("client_id","1000.UBZEK4NTC5JNXLET4ZW1SR4GKWE89Y");
+        access_token_map.put("client_secret","c19000f5be92039df6599ac98fc53cf4592c0b20e2");
+        access_token_map.put("redirect_uri","https://www.google.com/");
+        access_token_map.put("grant_type","refresh_token");
+        
+        access_token_response = invokeurl
+        [
+            url :"https://accounts.zoho.com/oauth/v2/token"
+            type :POST
+            parameters:access_token_map
+        ];
+        
+        access_token = access_token_response.get("access_token");
+        if(access_token != null)
+        {
+            // Set headers and send data to Zoho Catalyst
+            headers = Map();
+            headers.put("Authorization","Zoho-oauthtoken " + access_token);
+            headers.put("Content-Type","application/json");
+            
+            response = invokeurl
+            [
+                url :"https://api.catalyst.zoho.com/baas/v1/project/30100000000008022/table/30100000000042293/row"
+                type :POST
+                parameters:rec.toString()
+                headers:headers
+            ];
+            info response;
+        }
+    }
+}
