@@ -1,7 +1,7 @@
 ///////////////////// When a deal contract is signed, a new row is added to the Zoho Catalyst under the
-Admin_Deal_Contract_Signed tablevoid automation./////////////////////////////////////////////
+Admin_Deal_Contract_Signed table./////////////////////////////////////////////
 
-Admin_Row_Added_In_Zoho_Catalyst_Admin_Deal_For_Contract_Signed(Int deal_id)
+void automation.Admin_Row_Added_In_Zoho_Catalyst_Admin_Deal_For_Contract_Signed(Int deal_id)
 {
     // Fetch deal details from Zoho CRM
     deals_details = zoho.crm.getRecordById("Deals",deal_id);
